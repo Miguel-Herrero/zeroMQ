@@ -1,113 +1,116 @@
 var zmq = require('zmq');
 var debug = require('debug')('broker');
 
-var SIGREADY = 'SIGREADY';
-var SIGINT = 'SIGINT';
-
-// Array para almacenar los workers activos.
-var workers = [];
-
-/**
- * Bind to socket
- */
 var localFE = zmq.socket('router');
-localFE.bind('ipc://localFE.ipc')
-debug('Bound to localFE.ipc');
-
 var localBE = zmq.socket('router');
-localBE.bind('ipc://localBE.ipc')
-debug('Bound to localBE.ipc');
-
-var clientId = 0;
-var uuid = '';
-
-var jobs = [];
 
 /**
- * Receive message
+ * Bind to Local FrontEnd
  */
-localFE.on('message', function(msg) {
+localFE.bind('ipc://localFE.ipc', function(error) {
+  debug('Bound to localFE.ipc');
 
-  var clientId = arguments[0];
-  var uuid = arguments[2].toString();
-  var requestBody = arguments[4].toString();
+  /**
+   * Receive message
+   */
+  localFE.on('message', function(msg) {
 
-  // Reply with OK (job received)
-  localFE.send([clientId, '', 200, '', uuid]);
+    var clientId = arguments[0];
+    var uuid = arguments[2].toString();
+    var requestBody = arguments[4].toString();
 
-  // Procesamos el mensaje…
+    // Reply with OK (job received)
+    localFE.send([clientId, '', 200, '', uuid]);
 
-  // Enviamos la respuesta del Worker.
+    // Procesamos el mensaje…
 
+    // Enviamos la respuesta del Worker.
+
+  });
 });
 
 /**
- * Receive from Local BE
+ * Bind to Local BackEnd
  */
-localBE.on('message', function(msg) {
+localBE.bind('ipc://localBE.ipc', function(error) {
+  debug('Bound to localBE.ipc');
 
-  //debug(Array.apply(null, arguments).toString());
+  // Array para almacenar los workers activos.
+  var workers = [];
 
-  var workerId = arguments[0];
+  var SIGREADY = 'SIGREADY';
+  var SIGINT = 'SIGINT';
 
-  // WorkerId,'',SIGREADY === Worker empieza el Heartbeat
-  if (arguments.length === 3) {
+  /**
+   * Receive from Local BE
+   */
+  localBE.on('message', function(msg) {
 
-    var header = arguments[2].toString();
+    //debug(Array.apply(null, arguments).toString());
 
-    switch (header) {
-      case SIGREADY:
-        // O es un Worker nuevo, o es uno diciendo que está listo para trabajar.
-        //debug(typeof workerId);
-        var receivedWorker = findWorkerById(workerId);
-        var index = workers.indexOf(receivedWorker);
-        if (index > -1) {
-          // Es uno diciendo que está listo. Actualizamos su fecha de Heartbeat.
-          workers[index].ts = new Date().getTime();
-        } else {
-          // Añadimos el Worker a la lista de workers
-          workers.push({
-            workerId: workerId,
-            ts: new Date().getTime(),
-          });
-          checkActiveWorkers(workers);
-        }
+    var workerId = arguments[0];
 
-        // En cualquier caso, respondemos que OK al worker.
-        localBE.send([workerId, '', 200, '', 'Hello worker!']);
-        break;
-      case SIGINT:
-        // El worker se desconecta. Lo quitamos rápidamente de la lista de activos.
-        var receivedWorker = findWorkerById(workerId);
-        var index = workers.indexOf(receivedWorker);
-        if (index > -1) {
-          workers.splice(index, 1);
-          checkActiveWorkers(workers);
-        }
-      default:
+    // WorkerId,'',SIGREADY === Worker empieza el Heartbeat
+    if (arguments.length === 3) {
 
-    }
-  }
-});
+      var header = arguments[2].toString();
 
-/**
- * Comprobamos workers que no han hecho Heartbeat desde hace más de 1 s.
- */
-setInterval(function() {
-  var now = new Date().getTime();
+      switch (header) {
+        case SIGREADY:
+          // O es un Worker nuevo, o es uno diciendo que está listo para trabajar.
+          //debug(typeof workerId);
+          var receivedWorker = findWorkerById(workers, 'workerId', workerId);
+          var index = workers.indexOf(receivedWorker);
+          if (index > -1) {
+            // Es uno diciendo que está listo. Actualizamos su fecha de Heartbeat.
+            workers[index].ts = new Date().getTime();
+          } else {
+            // Añadimos el Worker a la lista de workers
+            workers.push({
+              workerId: workerId,
+              ts: new Date().getTime(),
+            });
+            checkActiveWorkers(workers);
+          }
 
-  // Comprobamos si hay algún worker muerto o desconectado.
-  workers.forEach(function(element, index, array) {
-    // Si su último ping fue hace más de 1 s lo marcamos como MUERTO.
-    if ((element.ts + 1000) < now) {
+          // En cualquier caso, respondemos que OK al worker.
+          localBE.send([workerId, '', 200, '', 'Hello worker!']);
+          break;
+        case SIGINT:
+          // El worker se desconecta. Lo quitamos rápidamente de la lista de activos.
+          var receivedWorker = findWorkerById(workers, 'workerId', workerId);
+          var index = workers.indexOf(receivedWorker);
+          if (index > -1) {
+            workers.splice(index, 1);
+            checkActiveWorkers(workers);
+          }
+        default:
 
-      workers.splice(index, 1);
-      debug(element.workerId, 'Worker probablemente muerto (reportó hace ' + (now - element.ts) + ' ms)');
-      checkActiveWorkers(workers);
+      }
     }
   });
 
-}, 2000);
+  /**
+   * Comprobamos workers que no han hecho Heartbeat desde hace más de 1 s.
+   */
+  setInterval(function() {
+    var now = new Date().getTime();
+
+    // Comprobamos si hay algún worker muerto o desconectado.
+    workers.forEach(function(element, index, array) {
+      // Si su último ping fue hace más de 1 s lo marcamos como MUERTO.
+      if ((element.ts + 1000) < now) {
+
+        workers.splice(index, 1);
+        debug(element.workerId, 'Worker probablemente muerto (reportó hace ' + (now - element.ts) + ' ms)');
+        checkActiveWorkers(workers);
+      }
+    });
+
+  }, 2000);
+});
+
+
 
 /**
  * Find Object By key
@@ -124,13 +127,15 @@ function objectFindByKey(array, key, value) {
 /**
  * Devuelve un Worker de la lista en base a su WorkerId
  *
- * @param {Buffer} workerId - El workerId según viene en el envelope.
+ * @param {Array} array - El array de objetos donde buscar.
+ * @param {String} key - La clave del objeto con que comparar.
+ * @param {Buffer} value - El workerId según viene en el envelope.
  */
-function findWorkerById(workerId) {
-  for (var i = 0; i < workers.length; i++) {
+function findWorkerById(array, key, value) {
+  for (var i = 0; i < array.length; i++) {
     // Si los Buffers de WorkerId son iguales, da cero, y devolvemos ese objeto.
-    if (workers[i].workerId.compare(workerId) === 0) {
-      return workers[i];
+    if (array[i][key].compare(value) === 0) {
+      return array[i];
     }
   }
   return null;
