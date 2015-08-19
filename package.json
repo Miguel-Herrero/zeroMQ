@@ -1,0 +1,25 @@
+{
+  "name": "zeromq",
+  "version": "1.0.0",
+  "description": "",
+  "main": "broker.js",
+  "dependencies": {
+    "debug": "^2.2.0",
+    "zmq": "^2.12.0",
+    "node-uuid": "^1.4.3"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Miguel-Herrero/zeroMQ.git"
+  },
+  "author": "Miguel Herrero <miguel.herrerobaena@gmail.com>",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Miguel-Herrero/zeroMQ/issues"
+  },
+  "homepage": "https://github.com/Miguel-Herrero/zeroMQ#readme"
+}
