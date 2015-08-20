@@ -3,11 +3,14 @@ var uuid = require('node-uuid');
 var fs = require('fs');
 var debug = require('debug')('client');
 
+var SIGDONE = 'SIGDONE'; // El trabajo ha sido procesado.
+
 /**
  * Connect to socket
  */
 var localFE = zmq.socket('dealer');
 localFE.connect('ipc://localFE.ipc');
+
 debug('Connected to localFE');
 
 // Enviados al Broker pendientes de procesarse.
@@ -26,45 +29,58 @@ setInterval(function() {
     ts: new Date().getTime(),
   });
   saveData('./tmp/received/' + jobUuid, data);
-
-  debug('Trabajos recibidos:', receivedJobs);
-}, 5000);
+}, 2000);
 
 /**
  * Receive messages with UUID.
  */
 localFE.on('message', function(message) {
-  debug(arguments.length)
 
-  // Status + UUID = Broker sent job to Worker.
-  if (arguments.length === 4) {
-    debug('Me llegaron 4 argumentos');
-    var status = arguments[1].toString();
-    var uuid = arguments[3].toString();
+  switch (arguments.length) {
 
-    if (parseInt(status.toString()) === 200) {
-      // Movemos el archivo a otra carpeta.
-      debug('Me llegó un OK')
-      // Copiamos el archivo original a /processing.
-      fs.createReadStream('./tmp/received/' + uuid).pipe(fs.createWriteStream('./tmp/processing/' + uuid));
-      // Eliminamos el original de /received.
-      fs.unlink('./tmp/received/' + uuid);
+    // ['', 200, '', uuid]    === El trabajo ha sido aceptado por un worker.
+    // ['', SIGDONE, '', uuid]    == El trabajo se ha finalizado.
+    case 4: {
 
-      // Eliminamos el trabajo de la cola de Recibidos.
-      var receivedJob = objectFindByKey(receivedJobs, 'uuid', uuid);
-      var index = receivedJobs.indexOf(receivedJob);
-      if (index > -1) {
-        // Eliminamos el trabajo de la cola de /received.
-        receivedJobs.splice(index, 1);
+      var header = arguments[1].toString();
+      var uuid = arguments[3].toString();
 
-        // Añadimos el trabajo a la cola de /processing.
-        processingJobs.push({
-          uuid: uuid,
-          ts: new Date().getTime(),
-        });
+      switch (header) {
+        // El worker ha aceptado el trabajo y lo empieza a procesar.
+        case "200": {
+          debug(uuid, 'Trabajo aceptado.');
+          // Movemos el archivo original a /processing.
+          fs.rename('./tmp/received/' + uuid, './tmp/processing/' + uuid, function(error) {});
+
+          // TODO: No sé si esto funciona.
+          // Eliminamos el trabajo de la cola de Recibidos.
+          var receivedJob = objectFindByKey(receivedJobs, 'uuid', uuid);
+          var index = receivedJobs.indexOf(receivedJob);
+          if (index > -1) {
+            debug('pasando received a processing')
+            // Eliminamos el trabajo de la cola de /received.
+            receivedJobs.splice(index, 1);
+
+            // Añadimos el trabajo a la cola de /processing.
+            processingJobs.push({
+              uuid: uuid,
+              ts: new Date().getTime(),
+            });
+          } else {
+            debug('received no encontrado')
+          }
+          break;
+        }
+        // El trabajo ha terminado de procesarse. Lo pasamos a finalizado.
+        case SIGDONE: {
+          debug(uuid, 'Trabajo finalizado.');
+          // Movemos el archivo procesado a /finished.
+          fs.rename('./tmp/processing/' + uuid, './tmp/finished/' + uuid, function(error) {});
+        }
+        default:
       }
-
     }
+    default:
   }
 
 });
@@ -81,8 +97,7 @@ setInterval(function() {
     if ((element.ts + 5000) < now) {
       debug('Elemento probablemente ATORADO:', element.ts, now);
     }
-  })
-  debug('\n');
+  });
 
 }, 3000);
 
@@ -108,3 +123,11 @@ function saveData(filename, data) {
     // Save file to S3
   });
 }
+
+/**
+ * Handling Ctrl-C cleanly
+ */
+process.on('SIGINT', function() {
+  localFE.close();
+  process.exit();
+});
