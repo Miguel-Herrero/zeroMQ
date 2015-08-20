@@ -99,7 +99,7 @@ localBE.bind('ipc://localBE.ipc', function(error) {
         switch (header) {
           // El worker ha terminado de procesar el trabajo. Avisamos al cliente.
           case SIGDONE: {
-            debug(workerId, 'Trabajo procesado por el worker.');
+            debug(workerId, 'Trabajo procesado por el worker: ' + uuid);
             // Avisamos al cliente de que lo marque como finalizado.
             localFE.send([clientId, '', SIGDONE, '', uuid]);
 
@@ -111,7 +111,7 @@ localBE.bind('ipc://localBE.ipc', function(error) {
           }
           // El worker ha aceptado el trabajo. Avisamos al cliente.
           case "200": {
-            debug(workerId, 'Trabajo aceptado por el worker');
+            debug(workerId, 'Trabajo aceptado por el worker: ' + uuid);
             // Avisamos al cliente que lo pase a /processing.
             localFE.send([clientId, '', 200, '', uuid]);
             break;
