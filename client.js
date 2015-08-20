@@ -25,7 +25,7 @@ setInterval(function() {
   var data = 'Lorem ipsum dolor sit amet';
   localFE.send(['', jobUuid, '', data]);
   receivedJobs.push({
-    uuid: uuid,
+    uuid: jobUuid,
     ts: new Date().getTime(),
   });
   saveData('./tmp/received/' + jobUuid, data);
@@ -52,12 +52,10 @@ localFE.on('message', function(message) {
           // Movemos el archivo original a /processing.
           fs.rename('./tmp/received/' + uuid, './tmp/processing/' + uuid, function(error) {});
 
-          // TODO: No sé si esto funciona.
           // Eliminamos el trabajo de la cola de Recibidos.
           var receivedJob = objectFindByKey(receivedJobs, 'uuid', uuid);
           var index = receivedJobs.indexOf(receivedJob);
           if (index > -1) {
-            debug('pasando received a processing')
             // Eliminamos el trabajo de la cola de /received.
             receivedJobs.splice(index, 1);
 
@@ -76,6 +74,14 @@ localFE.on('message', function(message) {
           debug(uuid, 'Trabajo finalizado.');
           // Movemos el archivo procesado a /finished.
           fs.rename('./tmp/processing/' + uuid, './tmp/finished/' + uuid, function(error) {});
+
+          // Eliminamos el trabajo de pendientes.
+          var processedJob = objectFindByKey(processingJobs, 'uuid', uuid);
+          var index = processingJobs.indexOf(processedJob);
+          if (index > -1) {
+            // Eliminamos el trabajo de la cola de /received.
+            processingJobs.splice(index, 1);
+          }
         }
         default:
       }
@@ -95,11 +101,11 @@ setInterval(function() {
   processingJobs.forEach(function(element, index, array) {
     // Si lleva procesándose más de 5 s, lo ponemos como ATORADO.
     if ((element.ts + 5000) < now) {
-      debug('Elemento probablemente ATORADO:', element.ts, now);
+      debug(element.uuid, 'Trabajo probablemente atorado (enviado hace ' + (now - element.ts) + ' ms)');
     }
   });
 
-}, 3000);
+}, 1000);
 
 /**
  * Find Object By key
