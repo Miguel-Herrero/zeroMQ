@@ -1,0 +1,6 @@
+{
+  "receivedPath": "./tmp/received/",
+  "acceptedPath": "./tmp/accepted/",
+  "doneConfirmedPath": "./tmp/doneConfirmed/",
+  "doneNotConfirmedPath": "./tmp/doneNotConfirmed/"
+}

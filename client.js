@@ -2,6 +2,7 @@ var zmq = require('zmq');
 var uuid = require('node-uuid');
 var fs = require('fs');
 var debug = require('debug')('client');
+var config = require('./config');
 
 var SIGDONE = 'SIGDONE'; // El trabajo ha sido procesado.
 
@@ -15,7 +16,7 @@ debug('Connected to localFE');
 
 // Enviados al Broker pendientes de procesarse.
 var receivedJobs = [];
-var processingJobs = [];
+var acceptedJobs = [];
 
 /**
  * Send 2 jobs with different UUIDs.
@@ -28,7 +29,7 @@ setInterval(function() {
     uuid: jobUuid,
     ts: new Date().getTime(),
   });
-  saveData('./tmp/received/' + jobUuid, data);
+  saveData(config.receivedPath + jobUuid, data);
 }, randomBetween(2000, 4000));
 
 /**
@@ -48,9 +49,9 @@ localFE.on('message', function(message) {
       switch (header) {
         // El worker ha aceptado el trabajo y lo empieza a procesar.
         case "200": {
-          debug(uuid, 'Trabajo aceptado.');
-          // Movemos el archivo original a /processing.
-          fs.rename('./tmp/received/' + uuid, './tmp/processing/' + uuid, function(error) {});
+          debug(uuid, 'Petición aceptado.');
+          // Movemos el archivo original a /accepted.
+          fs.rename(config.receivedPath + uuid, config.acceptedPath + uuid, function(error) {});
 
           // Eliminamos el trabajo de la cola de Recibidos.
           var receivedJob = objectFindByKey(receivedJobs, 'uuid', uuid);
@@ -59,28 +60,28 @@ localFE.on('message', function(message) {
             // Eliminamos el trabajo de la cola de /received.
             receivedJobs.splice(index, 1);
 
-            // Añadimos el trabajo a la cola de /processing.
-            processingJobs.push({
+            // Añadimos el trabajo a la cola de /accepted.
+            acceptedJobs.push({
               uuid: uuid,
               ts: new Date().getTime(),
             });
           } else {
-            debug('received no encontrado')
+            debug('UUID de petición no encontrada.')
           }
           break;
         }
         // El trabajo ha terminado de procesarse. Lo pasamos a finalizado.
         case SIGDONE: {
-          debug(uuid, 'Trabajo finalizado.');
-          // Movemos el archivo procesado a /finished.
-          fs.rename('./tmp/processing/' + uuid, './tmp/finished/' + uuid, function(error) {});
+          debug(uuid, 'Petición confirmada finalizada.');
+          // Movemos el archivo procesado a /doneConfirmed.
+          fs.rename(config.acceptedPath + uuid, config.doneConfirmedPath + uuid, function(error) {});
 
           // Eliminamos el trabajo de pendientes.
-          var processedJob = objectFindByKey(processingJobs, 'uuid', uuid);
-          var index = processingJobs.indexOf(processedJob);
+          var processedJob = objectFindByKey(acceptedJobs, 'uuid', uuid);
+          var index = acceptedJobs.indexOf(processedJob);
           if (index > -1) {
             // Eliminamos el trabajo de la cola de /received.
-            processingJobs.splice(index, 1);
+            acceptedJobs.splice(index, 1);
           }
         }
         default:
@@ -98,7 +99,7 @@ setInterval(function() {
   var now = new Date().getTime();
 
   // Comprobamos si hay algún trabajo procesándose que se ha quedado atorado.
-  processingJobs.forEach(function(element, index, array) {
+  acceptedJobs.forEach(function(element, index, array) {
     // Si lleva procesándose más de 5 s, lo ponemos como ATORADO.
     if ((element.ts + 5000) < now) {
 
@@ -110,11 +111,11 @@ setInterval(function() {
       }
 
       if (element.noWarning === 3) {
-        debug(element.uuid, 'Petición perdida. Moviendo a /missed…');
-        fs.rename('./tmp/processing/' + element.uuid, './tmp/missed/' + element.uuid, function(error) {});
-        processingJobs.splice(index, 1);
+        debug(element.uuid, 'Petición NO confirmada finalizada. Moviendo a directorio.');
+        fs.rename(config.acceptedPath + element.uuid, config.doneNotConfirmedPath + element.uuid, function(error) {});
+        acceptedJobs.splice(index, 1);
       } else {
-        debug(element.uuid, 'Trabajo probablemente atorado (enviado hace ' + (now - element.ts) + ' ms)');
+        debug(element.uuid, 'Petición probablemente atorada (enviada hace ' + (now - element.ts) + ' ms)');
       }
 
 
