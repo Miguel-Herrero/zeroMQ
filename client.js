@@ -29,7 +29,7 @@ setInterval(function() {
     ts: new Date().getTime(),
   });
   saveData('./tmp/received/' + jobUuid, data);
-}, 2000);
+}, randomBetween(2000, 4000));
 
 /**
  * Receive messages with UUID.
@@ -137,3 +137,7 @@ process.on('SIGINT', function() {
   localFE.close();
   process.exit();
 });
+
+function randomBetween(min, max) {
+  return Math.floor(Math.random() * (max - min) + min);
+}
