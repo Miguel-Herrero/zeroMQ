@@ -99,9 +99,13 @@ localBE.bind('ipc://localBE.ipc', function(error) {
         switch (header) {
           // El worker ha terminado de procesar el trabajo. Avisamos al cliente.
           case SIGDONE: {
-            debug(workerId, 'Trabajo procesado por el worker: ' + uuid);
+            debug(workerId, 'Trabajo procesado ' + uuid + ' para cliente ', clientId);
             // Avisamos al cliente de que lo marque como finalizado.
-            localFE.send([clientId, '', SIGDONE, '', uuid]);
+            // Esperamos 500 ms para que informe correctamente de trabajos atorados
+            // Ver https://github.com/abatiz/input/wiki/Reliability/
+            setTimeout(function() {
+              localFE.send([clientId, '', SIGDONE, '', uuid]);
+            }, 100);
 
             // Tenemos que actualizar el timestamp del worker.
             updateKnownWorker(workerId);
@@ -111,7 +115,7 @@ localBE.bind('ipc://localBE.ipc', function(error) {
           }
           // El worker ha aceptado el trabajo. Avisamos al cliente.
           case "200": {
-            debug(workerId, 'Trabajo aceptado por el worker: ' + uuid);
+            debug(workerId, 'Trabajo aceptado ' + uuid + ' para cliente ', clientId);
             // Avisamos al cliente que lo pase a /processing.
             localFE.send([clientId, '', 200, '', uuid]);
             break;
