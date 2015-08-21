@@ -101,7 +101,23 @@ setInterval(function() {
   processingJobs.forEach(function(element, index, array) {
     // Si lleva procesándose más de 5 s, lo ponemos como ATORADO.
     if ((element.ts + 5000) < now) {
-      debug(element.uuid, 'Trabajo probablemente atorado (enviado hace ' + (now - element.ts) + ' ms)');
+
+      // Incrementamos el número de aviso para este elemento.
+      if (element.hasOwnProperty('noWarning')) {
+        element.noWarning++;
+      } else {
+        element.noWarning = 0;
+      }
+
+      if (element.noWarning === 3) {
+        debug(element.uuid, 'Petición perdida. Moviendo a /missed…');
+        fs.rename('./tmp/processing/' + element.uuid, './tmp/missed/' + element.uuid, function(error) {});
+        processingJobs.splice(index, 1);
+      } else {
+        debug(element.uuid, 'Trabajo probablemente atorado (enviado hace ' + (now - element.ts) + ' ms)');
+      }
+
+
     }
   });
 
